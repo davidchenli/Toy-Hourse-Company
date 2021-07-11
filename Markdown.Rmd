@@ -1,0 +1,411 @@
+---
+title: "Toy Horse Main File"
+author: "MSBA In_Person Team D"
+date: "2020/12/7"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loadData, warning=FALSE}
+library(cluster)
+library(fpc)
+library(foreign)
+library(factoextra)
+library(gridExtra)
+library(data.table)
+library(reshape)
+#setwd("C:/Users/USER/Desktop")
+load("GBA424 Fall 2020 - Toy Horse Case Data.Rdata")
+source("Functions.R")
+df = conjointData[!is.na(conjointData$ratings),]
+
+
+
+
+```
+
+\section{Part A: Regressions}
+
+```{r individualLevelRegressions}
+#Do the regression on individual basis
+
+coefficient = matrix(nrow=200,ncol=5)
+for (i in 1:200){
+  
+  coefficient[i,] =lm(ratings~price+size+motion+style,data =df[df$ID==i,])$coefficients
+  
+}
+colname = c("intercept",names(conjointData)[c(4:7)])
+coefficient = data.table(coefficient)
+names(coefficient) = colname
+coefficient = as.matrix(coefficient)
+
+
+#predict the rating by coefficient
+predict = apply(cbind(1,conjointData[,c("price","size","motion","style")])*matrix(rep(coefficient,each =16),ncol=5),1,sum)
+
+#Input the Missing rating
+conjointData$ratings = ifelse(is.na(conjointData$ratings),predict,conjointData$rating)
+
+
+```
+
+\section{Part B: Post-hoc Segmentation}
+
+```{r postHocSegmentation}
+# Use plot function to see whether any pattern inside the coefficients
+
+plot(coefficient[,-1])
+
+
+#set the seed for k-mean cluster
+seed = 12464
+
+#Please refer to the functions R script for the function we used below
+
+# Test on the cluster number
+clustTest (coefficient)
+
+# The result suggests that the best number of cluster would be 3. We will use 2 to 4 clusters to find the best result.
+
+clusters = runClusts(coefficient, 2:4)
+
+#Trying 2 to 4 clusters
+# From the graph, we can see that the 2 cluster model has one group with very large space. In the 4 clusters model, there are overlaping in the clusters. Thus, the 3 clusters model would be the best fit in this condition.
+
+
+plotClust(clusters$kms[[1]], coefficient)#2 clusters
+plotClust(clusters$kms[[2]], coefficient)#3 clusters- preferred
+plotClust(clusters$kms[[3]], coefficient)#4 clusters
+
+
+
+
+# According to cluster analysis, the ideal product for segment 1 may be P4
+# The ideal product for segment 2 would be P16
+# The ideal product for Last might be P14
+
+
+respondentData$group =unlist(clusters$kms[[2]][1])
+respondent= data.table(respondentData)
+respondent[,sum(age),group]
+respondent[,sum(gender),group]
+respondent[,sum(gender==1 &age==1),group]
+respondent[,sum(gender==1 &age==0),group]
+respondent[,sum(gender==0 &age==1),group]
+respondent[,sum(gender==0 &age==0),group]
+
+##Further analysis on the respondentData inside each segment to obtain the insight for the respondent criteria in each cluster
+
+
+
+```
+
+Here we use the coefficient dataset generated from Part(A) to cluster the respondent. The K-mean cluster method was used. To identify number of clusters, clustTest function was used to determine the best fit number of cluster number. Here we have the number equal to 3. Thus, the cluster number 2-4 will be tested to form our clusters.
+
+After that, we use runCluster function to do the cluster analysis. From the chart generated, the cluster of 3 provide best segmentation as 2 clusters model would contain a lot of spaces inside one of the cluster and for 4 cluster model, there are overlapping on cluster on the right top corner of the graph. Thus we'll use that one for further analysis.
+
+To further analysis on the result, plotClust function was used to show the mean of cluster's mean on each attribute and also a scale bar plot. From the plot, we could identify that the segment one would be more price sensitive, and relative more interested in Bouncing and Racing type and relatively indifferent to the size of toy horse. For segment 2, they might be relative indifferent on the style, a bit less price sensitive, but strongly interested in small size and rocking ones. For the segment 3, they would be less price sensitive, and strongly prefer the large size, rocking and Glamour type of toys. 
+
+Meanwhile, while we look on the coefficient mean in each category, segment 1 hase positive coefficient mean in price and size and negative in motion and style. Thus, the rate could be maximize by apply **P4** into this segment.  For segment2, except the size, all other coefficients are positive, do the **P14** would be suitable for this segment. For segment 3, all coefficient is positive, so the rate could be maximize by apply **P16**.
+
+Also, we want to know the distribution of respondentData inside each segment. We extract the data and then load into data table. After looking and the 4 condition, we conclude that for segment 1, it contains most of older boys. For segment 3, it contains most of older girls. For the segment 2, even it do not take any major proportion of respondent, most of respondents in that segment is young children.
+
+
+For those who is interested in rocking and Glamour(mostly in segment 2 and 3), would be less price sensitive relative to other customers(mostly in segment 1). Thus, **for those type of product we could charge a bit higher price or not offer the discount**. For Bouncing and Racing type of toy horses,their potential buyer is more price sensitive, thus would be better to have lower price or discount to increase buying. Thus,**for those respondent with girl, it might not be a good idea to have price deduction** as segment 2 and 3 were lase price sensitive and girls are mostly in this two segment.
+
+
+\section{Part C: A Priori Segmentation}
+
+```{r aPrioriSegmentation}
+
+
+#Merge dataset for gender and Age
+conjointData.1 = conjointData
+conjointData.1$age = NA
+
+for (x  in 1:3200) {
+  for (y in 1:200){
+    if (conjointData.1$ID[x] == respondentData$ID[y]){
+      conjointData.1$age[x] = respondentData$age[y]
+  }
+
+  }
+}
+
+conjointData.1$gender = NA
+
+for (x  in 1:3200) {
+  for (y in 1:200){
+    if (conjointData.1$ID[x] == respondentData$ID[y]){
+      conjointData.1$gender[x] = respondentData$gender[y]
+    }
+    
+  }
+}
+
+#--------------------------------------------------------------------------------------------------
+
+lm1 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1))
+
+#interaction with gender
+lm2 = summary(lm(ratings~ (price + size + motion + style)*gender, data = conjointData.1))
+lm2
+
+#interaction with age
+lm3 = summary(lm(ratings~ (price + size + motion + style)*age, data = conjointData.1))
+lm3
+
+#by gender
+lm4 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$gender==1)) 
+lm5 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$gender==0))     
+lm4
+lm5
+
+#by age
+lm7 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age==1))        
+lm8 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age ==0))     
+lm7
+lm8
+
+#interaction with gender and age
+lm6 = summary(lm(ratings~ (price + size + motion + style)*gender*age, data = conjointData.1))
+lm6
+
+#by gender and age
+lm9 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age ==1 & conjointData.1$gender == 1   ))   
+lm10 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age ==1 & conjointData.1$gender == 0   ))   
+lm11 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age ==0 & conjointData.1$gender == 0   ))   
+lm12 = summary(lm(ratings~ price + size + motion + style, data = conjointData.1, subset=conjointData.1$age ==0 & conjointData.1$gender == 1   ))   
+lm9
+lm10
+lm11
+lm12
+
+#by individual coefficient: Here we use the coefficient data set to calculate the mean of coefficient for each segment
+
+
+#individual by age
+individual.age1 = coefficient[ (respondentData$age == 1),]
+individual.age0 = coefficient[ (respondentData$age == 0),]
+
+individual.agecompare = matrix(nrow =  5, ncol =  2)
+for (x in 1:5) {
+  individual.agecompare[x,1] = mean(individual.age0[,x])
+  individual.agecompare[x,2] = mean(individual.age1[,x])
+}
+
+row.names(individual.agecompare) = c('intercept',names(conjointData.1)[4:7])
+colnames(individual.agecompare) = c('age0', 'age1')
+individual.agecompare
+
+
+#individual by gender
+individual.gender1 = coefficient[ (respondentData$gender == 1),]
+individual.gender0 = coefficient[ (respondentData$gender == 0),]
+
+individual.gendercompare = matrix(nrow =  5, ncol =  2)
+for (x in 1:5) {
+  individual.gendercompare[x,1] = mean(individual.gender0[,x])
+  individual.gendercompare[x,2] = mean(individual.gender1[,x])
+}
+
+row.names(individual.gendercompare) = c('intercept',names(conjointData.1)[4:7])
+colnames(individual.gendercompare) = c('gender0', 'gender1')
+individual.gendercompare
+```
+
+Here, to segment the respondentData(Age,Gender), regression analysis were used. To analysis whether there's different effect on attributes by gender and age, the interaction term were seperately added into lm2 and lm3. 
+
+From lm2, if she is a girl, their parents will be less price sensitive. And girls prefer bigger sizes toy, Rocking, and Glamour style of toy horse. This is the same as post-hoc result as girls mostly stay in segment2 and 3 which are more prefer Rocking, and Glamour style and less price sensitive.
+
+After knowing the difference between gender, we want to do the separate regression for different gender. As mention in previous, girls prefer more Rocking and Glamour toys than boys comparing to lm4 and lm5, 
+
+
+From lm3, in this regression, there is one weak marginal interaction effect (motion:age) and one one moderate interaction effect(size:age). Age not a important segmentation effect to consider compared to gender.
+
+Even the interaction effect might be weak,we still separate the data by age. From lm7 and lm8, by separate by age, younger kids likes more Rocking toys, which is correspond to the preference on segment2(which also contain a lot young people). Meanwhile, even though the coefficient for size is both positive, the younger children would have less rate increase(coefficient for young children is close to 0) for the size become bigger. Thus, we could still find the similar effect in previous segment 2 tat the younger people would have more chance to prefer smaller size of toy hourse.
+
+
+
+After segment the data by age and gender separately, we'll these two to separate the data together. In lm6, by analyzing the gender and age interaction effect, the result shows that older kids prefer less Rocking toys. To have deeper insight about the effect, we'll run the regression lm9-lm12 separately. 
+
+
+From lm9 and lm10, they shows older boys do not prefer Rocking and Glamour type toys.
+
+From lm12, it shows younger girls like more Rocking and Glamour.
+
+The result in this part also verify the post-hoc analysis as segment 1 do not prefer Rocking and Glamour and young children prefer those character.
+
+Meanwhile, we try to obtain the mean of coefficient from Part(A) by the two factors to see the difference. While group by gender, which store in  'individual.gendercompare', the data also shows that girls like more Rocking and Glamour than boys. While group by age,the data also shows that older kids don't like Rocking
+
+In conclusion, to find the ideal product line, we look at the coefficient in each of 4 situation. For older girls, since the coefficient on motion is not significant, the ideal type might be **p 16** or **p 12**. For younger girls, we suggest **p 16** as all the coefficient is positive. For older boys, we suggest **p 4** as it would have max rating under P4 criteria. For younger boys, we suggest **p 4 ** or **p12** the coefficient on motion and style is not significant for young boys, so we  account the uncertainty in motion to make the decision. Comparing our recomendationton Part(B), the result is quit similar to post-hoc result for segment1 and 3.For segment 2 in previous cluster analysis, the ideal type is P14, but for young children, the ideal type is P16 mostly.This may result from the coefficient differences for young children and segment2 for priori and post-hoc segmentation in this case.
+
+The coefficients in lm9-12 do not very significant mostly(especially for young children). Thus, we believed that the result might not correctly represent the real condition. Thus, we would mainly use post-hoc analysis result for the following part.
+
+
+\section{Part D: Market Simulation}
+
+
+
+```{r marketSimulation}
+
+#Build up the dataframe to suggest the rating for each profile by each customer
+
+market = cast(ID~profile,data= conjointData[,c("ID","profile","ratings")])
+
+
+
+# Calculate the profit margin for each profile as the input for profit calculation function
+
+  profit_table=data.table(profilesData)
+  profit_table$revenue = profit_table$priceLabel/1.25
+  
+  profit_table[size == 0&motion==0,"cost"]=21
+  profit_table[size == 1&motion==0,"cost"]=29
+  profit_table[size == 0&motion==1,"cost"]=33
+  profit_table[size == 1&motion==1,"cost"]=41
+  profit_table$margin = profit_table$revenue-profit_table$cost
+  profit_table = profit_table[,c("profile","margin")]
+  
+
+#Please refer to the functions R script for the function we used below
+
+
+market_simulation(c(5,7,13),market)
+# Calculate the current market condition
+
+market_simulation(1:16,market)
+# See which profile would perform better under all profiles are in the market
+# P4,P6,P14,P16 seems to be better 
+#From the previous segmentation, we have P4,P14, and P16 from post-hoc segmentation
+#From the prior segmentation, we have P2,P4,P12, and P16 as ideal product
+
+# create the 
+scen=list()
+scen[[1]] = c(5,13,7)
+scen[[2]] = c(1:16)
+scen[[3]] = c(5,13,6,7)
+scen[[4]] = c(5,13,14,7)
+scen[[5]] = c(5,6,14,7)
+scen[[6]] = c(6,13,14,7)
+scen[[7]] = c(5,6,7)
+scen[[8]] = c(6,13,7)
+scen[[9]] = c(14,13,7)
+scen[[10]] = c(3,13,7)
+scen[[11]] = c(4,5,7)
+scen[[12]] = c(13,15,7)
+scen[[13]] = c(2,4,5,7)
+scen[[14]] = c(5,14,15,7)
+scen[[15]] = c(13,14,15,7)
+scen[[16]] = c(2, 5, 15, 7)
+scen[[17]] = c(2, 13, 15, 7)
+scen[[18]] = c(13, 15, 7)
+scen[[19]] = c(5, 14, 15, 7)
+scen[[20]] = c(5, 16, 7)
+scen[[21]] = c(5, 13, 16, 7)
+scen[[22]] = c(5, 16, 7)
+scen[[23]] = c(13, 16, 7)
+scen[[24]] = c(13, 14, 7)
+scen[[25]] = c(5, 14, 7)
+scen[[26]] = c(5, 13, 14, 7)
+scen[[27]] = c(5,12,7)
+scen[[28]] = c(13,12,7)
+scen[[29]] = c(4,5,7)
+scen[[30]] = c(12,13,16,7)
+scen[[31]] = c(5,12,16,7)
+scen[[32]] = c(4,5,12,7)
+scen[[33]] = c(5,12,16,7)
+
+
+
+
+
+
+
+scen_without =list()
+scen_without[[1]] = c(6,14,7)
+scen_without[[2]] = c(6,7)
+scen_without[[3]] = c(14,7)
+scen_without[[4]] = c(6,14,7)
+scen_without[[5]] = c(16,7)
+scen_without[[6]] = c(16,5,7)
+scen_without[[7]] = c(16,6,7)
+scen_without[[8]] = c(3,14,7)
+scen_without[[9]] = c(3,6,14,7)
+scen_without[[10]] = c(3,14,7)
+scen_without[[11]] = c(2,4,7)
+scen_without[[12]] = c(4,15,7)
+scen_without[[13]] = c(2,4,15,7)
+scen_without[[14]] = c(4,14,15,7)
+scen_without[[15]] = c(4,14,7)
+scen_without[[16]] = c(14,15,7)
+scen_without[[17]] = c(2,4,15,7)
+scen_without[[18]] = c(2,15,7)
+scen_without[[19]] = c(2, 4, 15, 7)
+scen_without[[20]] = c(2, 14, 15, 7)
+scen_without[[21]] = c(4, 14, 15, 7)
+scen_without[[22]] = c(14, 15, 16, 7)
+scen_without[[23]] = c(16, 7)
+scen_without[[24]] = c(4, 16, 7)
+scen_without[[25]] = c(9, 16, 7)
+scen_without[[26]] = c(14, 16, 7)
+scen_without[[27]] = c(4,12, 16, 7)
+scen_without[[28]] = c(12, 16, 7)
+scen_without[[29]] = c(4, 12, 7)
+scen_without[[30]] = c(16, 12, 7)
+
+
+# Test the scenario which contain original porfile
+
+with_origin = comparison(scen)
+
+result = profit(with_origin)
+result = data.table(result)
+result[company_profit > 190000,]
+result[,which(company_profit > 190000),]
+
+#There are 5 scenarios which have profit larger than 190,000. Most of them contain 2,12,15 profile. 
+
+
+
+
+without_origin = comparison(scen_without)
+result_without = profit(without_origin)
+result_without = data.table(result_without)
+result_without[company_profit > 190000,]
+result_without[,which(company_profit > 190000)]
+
+
+# There are 8 scenarios will have profit more than 190,000. They mostly contain 4,14,15. The 16 would perform best while this profile appear alone.
+i=1
+j=1
+table=matrix(nrow=4,ncol=3)
+for(j in 1:3){
+for(i in 1:4){
+  t = c(unlist((cbind(1,profilesData[c(2,12,13,15),c(2,3,4,5)])[i,])))*c(unlist((clusters$kms[[2]][[2]][j,])))
+  table[i,j]=sum(t)
+}
+}
+table
+
+# calculate the mean rating in each segment to find out the taeget customerscharacters 
+
+```
+
+To simulate the market, functions were written to avoid repeat works on calculation. The input would be the rating dataset and the list of scenario to evaluate. The outcome would be the market share distribution of each scenario. After that, the profit function would be used to calculate the profit for competitors and our company. The input would be market share data from previous output.
+
+For market simulation, we generate our candidate profile from previous segmentation analysis and also the simulation of the condition that all profiles are inside the market. From the cluster analysis, we identify **P4 P14 P16** as ideal type for each segment. In the priori segmentation, **P4 P8 P12 P16** would be ideal for the segments. Meanwhile, from the all profile existed condition, **P4 P14 P16** seems to have more market share than others, which may suggest that they have more absolutely high value amoung 200 respondents. Thus, we will mainly simulate the market with **P2 P4 P12 P14 P16** as they are mention in previous analysis and try to maximize the profit for our company. Other profile including **P3 P9 P15** might also be include randomly to see other potential combination to further increase the profit
+
+For the competitor, we assume that the competitor would offer  26" Racing Rocking Horse, which is P7, all over the period and won't change the type in the analysis period.
+
+Here we separate our analysis into two category: with and without original product line, which is **P5 P13** to form the market scenario. After the calculation for the scenario, we found that for with original group, there are 5 scenarios which have profit larger than 190,000. Most of them contain **P2 P12 P15**. On the other hand, there are 8 scenarios will have profit more than 190,000 in without original profile group. They mostly contain **P4 P14 P15**. Also, we found that even though P16 would have best porpotion in all profile condition, it will perform best while this profile appear alone, which may because the cannibalization effect on P16 and other profiles.
+
+For the two category, we can identify the senario that provide highest profit to the company.For with original product, Earlyriders might want to keep offering P13 and change offering P5 to offering P12. his shift the profit from 96,3930 to 219,136 dollars. For without original product view, the company should offer two new products, one is 18 inches Bouncing Racing Horse with the price of 119.99 dollars and the other one is 26 inches Rocking Glamour with the price of 139.99 dollars. The profit would further shift to 225,083 dollar. 
+
+To sum up, the maximize the profit, the company should offer the product correspond to **P2 P15**. Meanwhile, if the company consider the risk to totally change the product line is too high, the company can also consider an alternative plan to keep offering 18" Glamorous Rocking Horse and change offering 18" Racing Rocking Horse to offering 26" Glamorous Bouncing Horse(**P12 P13**). This will only change 1 model, receive much higher profit than current market, and also prevent unexpected condition for changing too much on the product line.
+
+To find potential customers character from the proposed scenario, we look back to the coefficient mean in each segment. Here, we have P2,P12,P15,P13 in our candidate pool. For without origin group, P2 and P12 would have highest rate on **segment3**. For with original product group, both P13 and P15 would perform best rating on segment 3. Thus, we could conclude that no matter which policy the company choose, the **older girls**.would the the priority targets.
